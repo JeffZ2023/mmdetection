@@ -1,0 +1,202 @@
+This file summarize the key takeaways I learned from exercising the mmdet on colab
+
+# Choose to use a config
+model_name = 'rtmdet_tiny_8xb32-300e_coco'
+# Setup a checkpoint file to load
+checkpoint = './checkpoints/rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth'
+
+# Set the device to be used for evaluation
+device = 'cuda:0'
+
+# Initialize the DetInferencer
+inferencer = DetInferencer(model_name, checkpoint, device)
+
+# Use the detector to do inference
+img = './demo/demo.jpg'
+result = inferencer(img, out_dir='./output')
+
+########################## How to apply the model to a customized dataset ##############
+# 1. how to train predefined models with customized datasets and then test it.
+## 1.1 prepare the dataset
+### questions: what work need to be done in terms of preparation
+### answerss: prepare as coco format
+## 1.2 prepare a config
+### questions: what is the config configuring? 
+### answer: config is to ensure the dataset can be successfully loaded
+### Question: what is in the config?
+### answer: define maax_epoches, base_lr, data_root, train_batch_size_per_gpu, train_num_workers
+###         define train_dataloader (batch_size, num_workers, dataset=dict(data_root, meta_info, ann_file, data_prefix,)
+###         define the val_dataloader and test_evaluator, val_evaluator = dict(ann_file=data_root + 'val.json')
+###         define model = dicct(bbox=head=dict(num_classes=1))
+###         define learning rate
+###         param_scheduler = [type, by epoch, begin, end, eta_min]
+###         train_pipeline_stage2 = 
+###         define optimizer (type='AdamW', lr, weight_decay, bias_decay)
+###                including optim_wrapper, default_hooks(check_point), custom_hooks
+###         load CoCo pre-trained weight
+###         load_rom = "" ./checkpoints/rtmdet.pth"
+###         train_cfg = dict(type='', max_epoches=, val_interval=1)
+###         visualizer = ...
+
+## 1.3 train the model on the dataset
+### questions: what are parameters to be trained, and what are the details of training setup? like lr, optimizer, etc, go through it completely
+## 1.4 test the model on the dataset
+### questions: what is test? metric? use the result to retrain the model？
+## 1.5 infer the models
+
+######################### annotation of coco data
+## image, annotation, categories
+
+#######################logs from training ###############3
+launcher = 'none'
+load_from = './checkpoints/rtmdet_tiny_8xb32-300e_coco_20220902_112414-78e30dcc.pth'
+log_level = 'INFO'
+log_processor = dict(by_epoch=True, type='LogProcessor', window_size=50)
+max_epochs = 20
+metainfo = dict(
+    classes=('balloon', ), palette=[
+        (
+            220,
+            20,
+            60,
+        ),
+    ])
+model = dict(
+    backbone=dict(
+        act_cfg=dict(inplace=True, type='SiLU'),
+        arch='P5',
+        channel_attention=True,
+        deepen_factor=0.167,
+        expand_ratio=0.5,
+        init_cfg=dict(
+            checkpoint=
+            'https://download.openmmlab.com/mmdetection/v3.0/rtmdet/cspnext_rsb_pretrain/cspnext-tiny_imagenet_600e.pth',
+            prefix='backbone.',
+            type='Pretrained'),
+        norm_cfg=dict(type='SyncBN'),
+        type='CSPNeXt',
+        widen_factor=0.375),
+    bbox_head=dict(
+        act_cfg=dict(inplace=True, type='SiLU'),
+        anchor_generator=dict(
+            offset=0, strides=[
+                8,
+                16,
+                32,
+            ], type='MlvlPointGenerator'),
+        bbox_coder=dict(type='DistancePointBBoxCoder'),
+        exp_on_reg=False,
+        feat_channels=96,
+        in_channels=96,
+        loss_bbox=dict(loss_weight=2.0, type='GIoULoss'),
+        loss_cls=dict(
+            beta=2.0,
+            loss_weight=1.0,
+            type='QualityFocalLoss',
+            use_sigmoid=True),
+        norm_cfg=dict(type='SyncBN'),
+        num_classes=1,
+        pred_kernel_size=1,
+        share_conv=True,
+        stacked_convs=2,
+        type='RTMDetSepBNHead',
+        with_objectness=False),
+    data_preprocessor=dict(
+        batch_augments=None,
+        bgr_to_rgb=False,
+        mean=[
+            103.53,
+            116.28,
+            123.675,
+        ],
+        std=[
+            57.375,
+            57.12,
+            58.395,
+        ],
+        type='DetDataPreprocessor'),
+    neck=dict(
+        act_cfg=dict(inplace=True, type='SiLU'),
+        expand_ratio=0.5,
+        in_channels=[
+            96,
+            192,
+            384,
+        ],
+        norm_cfg=dict(type='SyncBN'),
+        num_csp_blocks=1,
+        out_channels=96,
+        type='CSPNeXtPAFPN'),
+    test_cfg=dict(
+        max_per_img=300,
+        min_bbox_size=0,
+        nms=dict(iou_threshold=0.65, type='nms'),
+        nms_pre=30000,
+        score_thr=0.001),
+    train_cfg=dict(
+        allowed_border=-1,
+        assigner=dict(topk=13, type='DynamicSoftLabelAssigner'),
+        debug=False,
+        pos_weight=-1),
+    type='RTMDet')
+optim_wrapper = dict(
+    optimizer=dict(lr=8e-05, type='AdamW', weight_decay=0.05),
+    paramwise_cfg=dict(
+        bias_decay_mult=0, bypass_duplicate=True, norm_decay_mult=0),
+    type='OptimWrapper')
+param_scheduler = [
+    dict(begin=0, by_epoch=False, end=10, start_factor=1e-05, type='LinearLR'),
+    dict(
+        T_max=10,
+        begin=10,
+        by_epoch=True,
+        convert_to_iter_based=True,
+        end=20,
+        eta_min=4.000000000000001e-06,
+        type='CosineAnnealingLR'),
+]
+resume = False
+
+
+
+#####PR result####
+Running per image evaluation...
+Evaluate annotation type *bbox*
+DONE (t=0.10s).
+Accumulating evaluation results...
+DONE (t=0.02s).
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.264
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.324
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.321
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.003
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.360
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.140
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.376
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.466
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.200
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.581
+01/07 17:30:56 - mmengine - INFO - bbox_mAP_copypaste: 0.264 0.324 0.321 0.000 0.003 0.360
+01/07 17:30:56 - mmengine - INFO - Epoch(val) [1][3/3]    coco/bbox_mAP: 0.2640  coco/bbox_mAP_50: 0.3240  coco/bbox_mAP_75: 0.3210  coco/bbox_mAP_s: 0.0000  coco/bbox_mAP_m: 0.0030  coco/bbox_mAP_l: 0.3600  data_time: 0.2270  time: 0.3203
+01/07 17:30:58 - mmengine - INFO - The best checkpoint with 0.2640 coco/bbox_mAP at 1 epoch is saved to best_coco_bbox_mAP_epoch_1.pth.
+01/07 17:31:00 - mmengine - INFO - Epoch(train)  [2][ 5/16]  base_lr: 8.0000e-05 lr: 8.0000e-05  eta: 0:02:34  time: 0.5176  data_time: 0.0837  memory: 1421  loss: 2.7303  loss_cls: 2.0370  loss_bbox: 0.6933
+01/07 17:31:02 - mmengine - INFO - Epoch(train)  [2][10/16]  base_lr: 8.0000e-05 lr: 8.0000e-05  eta: 0:02:22  time: 0.4852  data_time: 0.0875  memory: 1421  loss: 2.7315  loss_cls: 2.0451  loss_bbox: 0.6864
+01/07 17:31:03 - mmengine - INFO - Epoch(train)  [2][15/16]  base_lr: 8.0000e-05 lr: 8.0000e-05  eta: 0:02:14  time: 0.4659  data_time: 0.0827  memory: 1421  loss: 2.7345  loss_cls: 2.0569  loss_bbox: 0.6776
+01/07 17:31:04 - mmengine - INFO - Exp name: rtmdet_tiny_1xb4-20e_balloon_20240107_173029
+01/07 17:31:04 - mmengine - INFO - Evaluating bbox...
+Loading and preparing results...
+
+########use tensorboard to visualize the curves
+base_lr
+bbox_mAP
+loss_bbox
+loss_cls
+
+#########
+So far, we have learnt how to test and train a one-stage detector using MMDetection. To further explore MMDetection, you could do several other things as shown below:
+Try YOLO series object detection using MMYOLO, also one of the OpenMMLab projects. In MMYOLO, not only can you try all the methods supported in MMDetection but also some YOLO series detectors.
+Try rotated object detection using MMRotate, also one of the OpenMMLab projects. In MMRotate, not only can you try all the methods supported in MMDetection but also some rotated object detectors.
+Try 3D object detection using MMDetection3D, also one of the OpenMMLab projects. In MMDetection3D, not only can you try all the methods supported in MMDetection but also some 3D object detectors.
+
+data_infos = list(data_infos.values())
